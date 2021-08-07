@@ -1,6 +1,21 @@
-# kaggle_Google_Smartphone_Decimeter_Challenge
+## **Under refactoring**
 
-Thanks to kaggle and organizers hosting a nice competition.
+# 10th place solution for Google Smartphone Decimeter Challenge at kaggle.
+ [Google Smartphone Decimeter Challenge](https://www.kaggle.com/c/google-smartphone-decimeter-challenge/overview)
+
+
+    Global Navigation Satellite System (GNSS) provides raw signals, which the GPS chipset uses to compute a position. 
+    Current mobile phones only offer 3-5 meters of positioning accuracy. While useful in many cases,
+    it can create a “jumpy” experience. For many use cases the results are not fine nor stable enough to be reliable.
+
+    This competition, hosted by the Android GPS team, is being presented at the ION GNSS+ 2021 Conference. 
+    They seek to advance research in smartphone GNSS positioning accuracy
+    and help people better navigate the world around them.
+
+    In this competition, you'll use data collected from the host team’s own Android phones
+    to compute location down to decimeter or even centimeter resolution, if possible.
+    You'll have access to precise ground truth, raw GPS measurements,
+    and assistance data from nearby GPS stations, in order to train and test your submissions. 
 
 ## Overview
 * Predicting the Noise, `Noise = Ground Truth - Baseline`, like denoising in computer vision
