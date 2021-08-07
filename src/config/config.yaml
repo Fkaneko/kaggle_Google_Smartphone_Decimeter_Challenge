@@ -1,0 +1,89 @@
+defaults:
+  - trainer: trainer_defaluts
+
+# hydra override
+hydra:
+  run:
+    dir: ../working/gsdc_${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    # Output directory for sweep runs
+    dir: ../working/multi_run/gsdc_${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# trainer override
+trainer:
+  # default_root_dir: ${hydra:run.dir}
+  gpus: 1
+  max_epochs: 25
+  precision: 16
+  benchmark: true
+  deterministic: false
+
+# neptune settings
+nept_tags: [Null]
+data_dir: ../input/google-smartphone-decimeter-challenge
+
+seed: 42
+num_workers: 12
+batch_size: 96
+aug_mode: 1
+val_fold: 0
+
+lr: 0.0001
+optim_name: sgd
+warmup_ratio: 0.1
+
+is_test: false
+is_debug: false
+find_lr: false
+ckpt_path: Null
+# use_ext_data: true
+# ext_data_mode: 1
+#
+# input image def
+apply_kalman_filtering: True
+data_aug_with_kf: True
+data_aug_with_gaussian: False
+train_sampling_delta: 4
+val_sampling_delta: 64
+input_width: 256
+gt_as_mask: True
+target_path: Null
+
+# wave augmentation
+rand_freq: 0.0
+rand_ratio: 0.3
+sigma: 1.0e-5
+
+# train proceduore
+monitor: "phone_mae"
+stft_targets: ["latDeg_diff_prev", "lngDeg_diff_prev"]
+train_energy_only: False
+
+# test configuration
+tta_with_kf: False
+use_flip_tta: False
+test_sampling_delta: 16
+test_with_val: False
+
+stft_params:
+    n_fft: 256
+    hop_length: 1
+    win_length: 16
+    is_db: True
+    is_pad: False
+    amin: 1.0e-10
+    top_db: 140
+    ref: 1.0
+
+model:
+    loss: "mse"
+    metrics: "mse"
+    channels_last: False
+    drop_rate: 0.0
+    last_act: "tanh"
+    smp_params:
+      arch_name: "unetpp"
+      encoder_name: "timm-efficientnet-b0"
+      encoder_weights: "imagenet"
+      in_channels: 3
+      classes: 9

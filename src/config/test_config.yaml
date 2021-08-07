@@ -1,0 +1,20 @@
+#
+defaults:
+  - test_weights: compe_sub_github
+
+# hydra override
+hydra:
+  run:
+    dir: ../working/gsdc_${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    # Output directory for sweep runs
+    dir: ../working/multi_run/gsdc_${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# test configuration
+tta_with_kf: False
+use_flip_tta: True
+test_sampling_delta: 16
+test_with_val: False
+
+stft_targets: ["latDeg_diff_prev", "lngDeg_diff_prev"]
+
