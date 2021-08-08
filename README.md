@@ -38,6 +38,10 @@
         * this speed prediction was used for:
             1. Low speed mask;  The points of low speed area are replaced with its median.
             2. Speed disagreement mask: If the speed from position prediction and this speed prediction differ a lot, remove such points and interpolate.
+        * prediction example for the segmentation.
+        ![segmentation](./images/conv_segmentation_result.png) 
+        ![segmentation2](./images/conv_segmentation_result_2.png) 
+
 
 ## LightGBM Part
   * Input: IMU data excluding magnetic filed feature
