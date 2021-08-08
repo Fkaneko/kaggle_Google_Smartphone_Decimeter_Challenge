@@ -20,15 +20,15 @@ trainer:
 
 # neptune settings
 nept_tags: [Null]
-data_dir: ../input/google-smartphone-decimeter-challenge
 
+data_dir: ../input/google-smartphone-decimeter-challenge
 seed: 42
 num_workers: 12
 batch_size: 96
 aug_mode: 1
 val_fold: 0
 
-lr: 0.0001
+lr: 1.0
 optim_name: sgd
 warmup_ratio: 0.1
 
@@ -36,8 +36,6 @@ is_test: false
 is_debug: false
 find_lr: false
 ckpt_path: Null
-# use_ext_data: true
-# ext_data_mode: 1
 #
 # input image def
 apply_kalman_filtering: True
@@ -50,7 +48,7 @@ gt_as_mask: True
 target_path: Null
 
 # wave augmentation
-rand_freq: 0.0
+rand_freq: 0.3
 rand_ratio: 0.3
 sigma: 1.0e-5
 
@@ -59,11 +57,6 @@ monitor: "phone_mae"
 stft_targets: ["latDeg_diff_prev", "lngDeg_diff_prev"]
 train_energy_only: False
 
-# test configuration
-tta_with_kf: False
-use_flip_tta: False
-test_sampling_delta: 16
-test_with_val: False
 
 stft_params:
     n_fft: 256
@@ -83,7 +76,7 @@ model:
     last_act: "tanh"
     smp_params:
       arch_name: "unetpp"
-      encoder_name: "timm-efficientnet-b0"
+      encoder_name: "timm-efficientnet-b4"
       encoder_weights: "imagenet"
       in_channels: 3
       classes: 9

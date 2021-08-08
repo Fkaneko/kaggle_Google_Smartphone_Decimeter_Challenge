@@ -2,7 +2,7 @@ import copy
 import os
 from functools import partial
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 import hydra
 import matplotlib.pyplot as plt
@@ -19,11 +19,8 @@ from src.dataset.datamodule import GsdcDatamodule, interpolate_vel
 from src.dataset.utils import get_groundtruth
 from src.modeling.pl_model import LitModel
 from src.postprocess.metric import print_metric
-from src.postprocess.postporcess import (
-    apply_kf_smoothing,
-    filter_outlier,
-    mean_with_other_phones,
-)
+from src.postprocess.postporcess import (apply_kf_smoothing, filter_outlier,
+                                         mean_with_other_phones)
 from src.postprocess.visualize import add_distance_diff
 from src.utils.util import set_random_seed
 
@@ -38,6 +35,36 @@ def check_test_df(path_a, path_b):
     df = pd.merge(df_a, df_b, on=["phone", "millisSinceGpsEpoch"])
     met_df = print_metric(df=df)
     return met_df
+
+
+def load_dataset(is_test: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    data_dir = Path(
+        get_original_cwd(), "../input/google-smartphone-decimeter-challenge"
+    )
+    fname = "test" if is_test else "train"
+    df = pd.read_csv(data_dir / f"baseline_locations_{fname}.csv")
+
+    if not is_test:
+        # merge graoundtruth
+        df = df.merge(
+            get_groundtruth(data_dir),
+            on=["collectionName", "phoneName", "millisSinceGpsEpoch"],
+        )
+
+    # area_df from
+    # https://www.kaggle.com/columbia2131/area-knn-prediction-train-hand-label
+    area_df = pd.read_csv(
+        Path(get_original_cwd()) / f"./src/meta_data/{fname}_area.csv"
+    )
+
+    df = apply_kf_smoothing(df=df)
+    df = add_distance_diff(df=df, is_test=is_test)
+
+    if is_test:
+        area_df = area_df.rename(columns={"area_pred": "area_target"})
+
+    df = pd.merge(df, area_df[["collectionName", "area_target"]], on=["collectionName"])
+    return df, area_df
 
 
 def interpolate_vel_df(
@@ -69,12 +96,6 @@ def plot_velocity(
 
     vel_pred_df = vel_pred_df[vel_pred_df["phone"] == phone].fillna(0.0)
 
-    # T_ref = posi_pred_df.loc[:, "millisSinceGpsEpoch"].values
-    # rel_positions = vel_pred_df.loc[:, pred_targets].fillna(0.0).values
-    # T_rel = vel_pred_df.loc[:, "millisSinceGpsEpoch"].values
-    # delta_xy_hat = interpolate_vel(
-    #     velocity=rel_positions, base_time=T_rel, ref_time=T_ref, drop_first_vel=True
-    # )
     T_ref, delta_xy_hat = interpolate_vel_df(
         vel_pred_df=vel_pred_df, posi_pred_df=posi_pred_df, pred_targets=pred_targets,
     )
@@ -145,12 +166,9 @@ def plot_velocity(
 
     axes[0].set_yscale(yscale)
     axes[0].set_ylabel("deg velocity")
-    # axes[0].set_ylim(-3.0e-4, 3.0e-4)
 
     axes[1].set_yscale(yscale)
     axes[1].set_ylabel("deg velocity")
-    # axes[1].set_ylim(1.0e-9, 1.0e-4)
-    # axes[1].set_ylim(-3.0e-4, 3.0e-4)
     axes[2].set_yscale("log")
     axes[2].set_ylim(1.0e-8, 1.0e-4)
 
@@ -185,7 +203,6 @@ def rel_pred(
     T_ref, delta_xy_hat = interpolate_vel_df(
         vel_pred_df=vel_pred_df, posi_pred_df=posi_pred_df, pred_targets=stft_targets
     )
-    # delta_xy_hat = posi_pred_df.loc[:, ["latDeg_gt_diff_prev", "lngDeg_gt_diff_prev"]].values
     delta_xy_hat[:1] = 0.0
     pred_posi = np.cumsum(delta_xy_hat, axis=0)
     rel_posi_mean = pred_posi.mean(axis=0)
@@ -280,9 +297,6 @@ def knn_search(
         local_dist, local_ind = local_tree.query(
             query_state[local_targets].to_numpy().reshape(1, -1), k=k_local
         )
-        # if use_best:
-        #      phone = local_data_df.iloc[local_ind[0][0]].phone
-        #      millisSinceGpsEpoch = local_data_df.iloc[local_ind[0][0]].millisSinceGpsEpoch
 
         posi_pred_df.loc[
             posi_pred_df.millisSinceGpsEpoch == query_state.millisSinceGpsEpoch,
@@ -325,8 +339,6 @@ def mask_with_velocity(
     low_vel_area.append(low_pred_vel.sum())
     local_means = []
     for part_ind in low_vel_area:
-        # np.take(deg_preds, np.where(low_pred_vel)[0], axis=0) == deg_preds[low_pred_vel]
-        # dut to np.diff
         part_ind = part_ind + 1
         slice_target = np.where(low_pred_vel)[0][prev_part:part_ind]
         local_degs = np.take(deg_preds, slice_target, axis=0)
@@ -343,7 +355,6 @@ def mask_with_velocity(
 
     kf_vel = np.diff(deg_preds, axis=0)
     kf_vel = np.pad(kf_vel, [[1, 0], [0, 0]], mode="constant", constant_values=0.0)
-    # disagreement_mask = np.any(np.abs(delta_xy_hat - kf_vel) > 1000e-4, axis=1)
     disagreement_mask = np.all(np.abs(delta_xy_hat - kf_vel) > 0.09e-4, axis=1)
     disagreement_mask[:-1] += disagreement_mask[1:]
 
@@ -364,8 +375,8 @@ def mask_with_velocity(
 def main(conf: DictConfig) -> None:
     set_random_seed(SEED)
 
-    # conv prediction
     is_test = not conf.test_with_val
+    print("start conv position prediction")
     for model_path in conf.test_weights.model_paths:
         model_path = Path(
             get_original_cwd(), conf.test_weights.weights_dir, model_path[1]
@@ -419,31 +430,9 @@ def main(conf: DictConfig) -> None:
 
     vel_pred_df = pd.read_csv(vel_pred_paths[0][1])
     vel_pred_df.loc[:, conf.stft_targets] = np.sum(np.stack(vel_preds), axis=0)
-    use_baseline = False
-    if use_baseline:
-        vel_pred_df = pd.read_csv(
-            os.path.join(get_original_cwd(), "../input/kf_train.csv")
-        )
-        vel_pred_df = add_distance_diff(df=vel_pred_df, is_test=False)
 
-    # area_df from https://www.kaggle.com/columbia2131/area-knn-prediction-train-hand-label
-    if is_test:
-        posi_pred_path = os.path.join(get_original_cwd(), "../input/kf_test.csv")
-        area_df = pd.read_csv(
-            Path(get_original_cwd()) / "./src/meta_data/test_area.csv"
-        )
-        area_df = area_df.rename(columns={"area_pred": "area_target"})
-
-    else:
-        posi_pred_path = os.path.join(get_original_cwd(), "../input/kf_train.csv")
-        area_df = pd.read_csv(
-            Path(get_original_cwd()) / "./src/meta_data/train_area.csv"
-        )
-
-    posi_pred_df = pd.read_csv(posi_pred_path)
-    posi_pred_df = pd.merge(
-        posi_pred_df, area_df[["collectionName", "area_target"]], on=["collectionName"]
-    )
+    print("loading baseline positions")
+    posi_pred_df, area_df = load_dataset(is_test=is_test)
 
     phone_list = vel_pred_df["phone"].unique()
     # baseline
@@ -453,35 +442,9 @@ def main(conf: DictConfig) -> None:
         met_df = print_metric(df=df)
         print(met_df)
 
-    # for phone in phone_list:
-    #     plot_velocity(
-    #         vel_pred_df=vel_pred_df,
-    #         posi_pred_df=posi_pred_df,
-    #         phone=phone,
-    #         is_test=is_test,
-    #     )
-
     print("Ensemble, conv pred & ligtgbm")
-    if is_test:
-        gbm_df = pd.read_csv(
-            Path(
-                get_original_cwd(), "./model_weights/light_gbm_noise_surpress_deg.csv",
-            )
-        )
-        conv_df = pd.read_csv(
-            Path(get_original_cwd(), "./model_weights/conv_deg_pred.csv")
-        )
-
-    else:
-        gbm_df = pd.read_csv(
-            Path(
-                get_original_cwd(),
-                "./model_weights/light_gbm_nosise_val_supress_def.csv",
-            )
-        )
-        conv_df = pd.read_csv(
-            Path(get_original_cwd(), "./model_weights/conv_deg_pred.csv")
-        )
+    gbm_df = pd.read_csv(Path(get_original_cwd(), conf.gbm_pred_path))
+    conv_df = pd.read_csv(Path(get_original_cwd(), conf.conv_pred_path))
 
     targets = ["latDeg", "lngDeg"]
     for phone in phone_list:
@@ -553,16 +516,7 @@ def main(conf: DictConfig) -> None:
 
     print("knn at downtown")
     dfs = []
-    data_dir = Path(
-        get_original_cwd(), "../input/google-smartphone-decimeter-challenge"
-    )
-    data_df = pd.read_csv(data_dir / "baseline_locations_train.csv")
-    # merge graoundtruth
-    data_df = data_df.merge(
-        get_groundtruth(data_dir),
-        on=["collectionName", "phoneName", "millisSinceGpsEpoch"],
-    )
-    data_df = add_distance_diff(df=data_df, is_test=False)
+    data_df, _ = load_dataset(is_test=False)
     data_df = data_df.fillna(0.0)
 
     data_df, global_targets_gt, local_targets_gt = calc_avg_vel(
@@ -609,8 +563,8 @@ def main(conf: DictConfig) -> None:
         after_len = (len(sample_sub), len(df))
         print(orig_len, after_len)
         save_path = Path.cwd() / "./submission.csv"
-        print(str(save_path))
         df.loc[:, targets].to_csv(save_path, index=False)
+        print(f"Save submission file on {str(save_path)}")
 
 
 if __name__ == "__main__":

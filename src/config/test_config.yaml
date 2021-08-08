@@ -18,3 +18,5 @@ test_with_val: False
 
 stft_targets: ["latDeg_diff_prev", "lngDeg_diff_prev"]
 
+conv_pred_path: "./model_weights/conv_position_pred.csv"
+gbm_pred_path: "./model_weights/light_gbm_noise_surpress_deg.csv"
