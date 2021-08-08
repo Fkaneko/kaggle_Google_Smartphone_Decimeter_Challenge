@@ -1,7 +1,7 @@
 weights_dir: ./model_weights
 conf_name: config.yaml
 ckpt_regex: epoch*.ckpt
-
+# ckpt_path = "NeptuneLogger/KAG-*/checkpoints/epoch*.ckpt"
 model_paths: 
   # [weight, path_name]
   # effb2 fold 0

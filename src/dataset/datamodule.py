@@ -598,11 +598,17 @@ def make_sampling_list(
     sampling_list = []
     initial_time_offset = 0
     dfs = []
+    df = df.sort_values(
+        by=["collectionName", "phoneName", "millisSinceGpsEpoch"]
+    ).reset_index(drop=True)
     if isinstance(stft_targets, ListConfig):
         stft_targets = OmegaConf.to_container(stft_targets)
+    deg_targets = []
     if not is_test:
         gt_targets = [target.replace("_diff", "_gt_diff") for target in stft_targets]
         stft_targets = stft_targets + gt_targets
+        deg_targets = deg_targets + ["latDeg_gt", "lngDeg_gt"]
+    deg_targets = deg_targets + ["latDeg", "lngDeg"]
 
     if remove_starts:
         # for remove initial
@@ -633,6 +639,15 @@ def make_sampling_list(
             "phone": np.repeat(phone, inter_gps_epochs.shape[0]),
             "millisSinceGpsEpoch": inter_gps_epochs,
         }
+        for deg_target in deg_targets:
+            for_df[deg_target] = scipy.interpolate.interp1d(
+                df_.loc[:, "millisSinceGpsEpoch"].values,
+                df_[deg_target].to_numpy(),
+                bounds_error=None,
+                fill_value="extrapolate",
+                assume_sorted=True,
+                axis=0,
+            )(inter_gps_epochs)
 
         for_df.update({key: inter_targets[:, i] for i, key in enumerate(stft_targets)})
         inter_df = pd.DataFrame(for_df)
@@ -689,6 +704,9 @@ def get_phone_sequences(
     if not is_test:
         gt_targets = [target.replace("_diff", "_gt_diff") for target in targets]
         targets = targets + gt_targets
+        targets = targets + ["latDeg_gt", "lngDeg_gt"]
+    targets = targets + ["latDeg", "lngDeg"]
+
     for phone, df_ in df.groupby("phone"):
         values = {target: df_[target].values for target in targets}
         phone_sequences[phone] = values

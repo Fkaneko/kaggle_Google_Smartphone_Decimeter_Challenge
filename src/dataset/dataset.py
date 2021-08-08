@@ -169,6 +169,10 @@ class WaveformDataset(torch.utils.data.Dataset):
             phone_sequence[stft_target] = phone_sequence[stft_target][
                 phone_time : phone_time + self.input_width
             ]
+        for target in ["latDeg", "lngDeg"]:
+            phone_sequence[target] = phone_sequence[target][
+                phone_time : phone_time + self.input_width
+            ]
 
         if self.rand_freq > np.random.random():
             size = (len(self.stft_targets), int(self.input_width * self.rand_ratio))
@@ -200,6 +204,10 @@ class WaveformDataset(torch.utils.data.Dataset):
                 phone_sequence[stft_target] = phone_sequence[stft_target][
                     phone_time : phone_time + self.input_width
                 ]
+            for target in ["latDeg_gt", "lngDeg_gt"]:
+                phone_sequence[target] = phone_sequence[target][
+                    phone_time : phone_time + self.input_width
+                ]
 
             target_image = self.get_image(
                 phone_sequence=phone_sequence,
@@ -212,18 +220,51 @@ class WaveformDataset(torch.utils.data.Dataset):
             target_image = augmented["target_image"].astype(np.float32)
 
             target_image = torch.from_numpy(target_image.transpose(2, 0, 1))
+            noise = (
+                np.concatenate(
+                    [
+                        phone_sequence["latDeg_gt"] - phone_sequence["latDeg"],
+                        phone_sequence["lngDeg_gt"] - phone_sequence["lngDeg"],
+                    ]
+                )
+                .astype(np.float32)
+                .clip(-1.0e-3, 1.0e-3)
+                * 1.0e3
+            )
+
         else:
             augmented = self.image_transforms(image=img)
             target_image = torch.empty(0)
 
         img = augmented["image"]
         img = torch.from_numpy(img.transpose(2, 0, 1))
-        return {
-            "phone": phone,
-            "phone_time": phone_time,
-            "input_width": self.input_width,
-            "millisSinceGpsEpoch": sample["millisSinceGpsEpoch"],
-            "image": img,
-            "target_image": target_image,
-            **phone_sequence,
-        }
+
+        orig = np.concatenate([phone_sequence["latDeg"], phone_sequence["lngDeg"]])
+        if not self.is_test:
+            return {
+                "phone": phone,
+                "phone_time": phone_time,
+                "input_width": self.input_width,
+                "millisSinceGpsEpoch": sample["millisSinceGpsEpoch"],
+                "image": img,
+                "target_image": target_image,
+                "noise": noise,
+                "latDeg_gt": phone_sequence["latDeg_gt"],
+                "lngDeg_gt": phone_sequence["lngDeg_gt"],
+                "orig": orig
+                # **phone_sequence,
+            }
+        else:
+            return {
+                "phone": phone,
+                "phone_time": phone_time,
+                "input_width": self.input_width,
+                "millisSinceGpsEpoch": sample["millisSinceGpsEpoch"],
+                "image": img,
+                "target_image": target_image,
+                "latDeg": phone_sequence["latDeg"],
+                "lngDeg": phone_sequence["lngDeg"],
+                "orig": orig
+                # **phone_sequence,
+            }
+

@@ -1,6 +1,6 @@
 #
 defaults:
-  - test_weights: compe_sub_github
+  - test_weights: compe_sub_github_conv_position
 
 # hydra override
 hydra:

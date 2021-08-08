@@ -1,0 +1,12 @@
+weights_dir: ./model_weights/conv_position
+conf_name: config.yaml
+ckpt_regex: epoch*.ckpt
+model_paths: 
+  # effb3 fold 0,1,2 input_width=128
+  - [0.17, "2021-08-05_00-36-03_0"]
+  - [0.17, "2021-08-05_00-36-03_1"]
+  - [0.17, "2021-08-05_00-36-03_2"]
+  # effb3 fold 0,1,2 input_width=256
+  - [0.17, "2021-08-05_00-36-03_3"]
+  - [0.16, "2021-08-05_00-36-03_4"]
+  - [0.16, "2021-08-05_00-36-03_5"]

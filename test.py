@@ -19,8 +19,11 @@ from src.dataset.datamodule import GsdcDatamodule, interpolate_vel
 from src.dataset.utils import get_groundtruth
 from src.modeling.pl_model import LitModel
 from src.postprocess.metric import print_metric
-from src.postprocess.postporcess import (apply_kf_smoothing, filter_outlier,
-                                         mean_with_other_phones)
+from src.postprocess.postporcess import (
+    apply_kf_smoothing,
+    filter_outlier,
+    mean_with_other_phones,
+)
 from src.postprocess.visualize import add_distance_diff
 from src.utils.util import set_random_seed
 
@@ -414,7 +417,7 @@ def main(conf: DictConfig) -> None:
         torch.cuda.empty_cache()
 
     csv_name = f"pred_test_flip_{conf.use_flip_tta}_d{conf.test_sampling_delta}.csv"
-    vel_pred_paths = [
+    conv_pred_paths = [
         [
             model_path[0],
             Path(get_original_cwd(), conf.test_weights.weights_dir, model_path[1])
@@ -422,149 +425,41 @@ def main(conf: DictConfig) -> None:
         ]
         for model_path in conf.test_weights.model_paths
     ]
-    vel_preds = []
+    conv_preds = []
 
-    for path in vel_pred_paths:
+    deg_targets = ["latDeg", "lngDeg"]
+    for path in conv_pred_paths:
         df = pd.read_csv(path[1])
-        vel_preds.append(path[0] * df.loc[:, conf.stft_targets].values)
+        conv_preds.append(path[0] * df.loc[:, deg_targets].values)
 
-    vel_pred_df = pd.read_csv(vel_pred_paths[0][1])
-    vel_pred_df.loc[:, conf.stft_targets] = np.sum(np.stack(vel_preds), axis=0)
+    conv_pred_df = pd.read_csv(conv_pred_paths[0][1])
+    conv_pred_df.loc[:, deg_targets] = np.sum(np.stack(conv_preds), axis=0)
 
-    print("loading baseline positions")
-    posi_pred_df, area_df = load_dataset(is_test=is_test)
-
-    phone_list = vel_pred_df["phone"].unique()
-    # baseline
-    df = posi_pred_df.loc[posi_pred_df.phone.isin(phone_list)]
-    if not is_test:
-        print("baseline")
-        met_df = print_metric(df=df)
-        print(met_df)
-
-    print("Ensemble, conv pred & ligtgbm")
-    gbm_df = pd.read_csv(Path(get_original_cwd(), conf.gbm_pred_path))
-    conv_df = pd.read_csv(Path(get_original_cwd(), conf.conv_pred_path))
-
-    targets = ["latDeg", "lngDeg"]
-    for phone in phone_list:
-        df_ = gbm_df.loc[gbm_df.phone == phone]
-        cname = phone.split("_")[0]
-        area = area_df.loc[area_df.collectionName == cname]["area_target"].to_numpy()[0]
-        if len(df_) > 0:
-            if area == 0:
-                posi_pred_df.loc[posi_pred_df.phone == phone, targets] = (
-                    df_.loc[:, targets].to_numpy() * 0.6
-                    + conv_df.loc[conv_df.phone == phone, targets].to_numpy() * 0.4
-                )
-            else:
-                posi_pred_df.loc[posi_pred_df.phone == phone, targets] = (
-                    df_.loc[:, targets].to_numpy() * 0.3
-                    + conv_df.loc[conv_df.phone == phone, targets].to_numpy() * 0.7
-                )
-        else:
-            if area == 0:
-                posi_pred_df.loc[posi_pred_df.phone == phone, targets] = (
-                    posi_pred_df.loc[posi_pred_df.phone == phone, targets].to_numpy()
-                    * 0.6
-                    + conv_df.loc[conv_df.phone == phone, targets].to_numpy() * 0.4
-                )
-            elif area == 1:
-                posi_pred_df.loc[posi_pred_df.phone == phone, targets] = (
-                    posi_pred_df.loc[posi_pred_df.phone == phone, targets].to_numpy()
-                    * 0.2
-                    + conv_df.loc[conv_df.phone == phone, targets].to_numpy() * 0.8
-                )
-            elif area == 2:
-                posi_pred_df.loc[posi_pred_df.phone == phone, targets] = (
-                    posi_pred_df.loc[posi_pred_df.phone == phone, targets].to_numpy()
-                    * 0.10
-                    + conv_df.loc[conv_df.phone == phone, targets].to_numpy() * 0.9
-                )
-
-    if not is_test:
-        met_df = print_metric(df=posi_pred_df)
-        print(met_df)
-
-    print("conv speed & disagreement mask")
-    dfs = []
-    for phone in phone_list:
-        dfs.append(
-            mask_with_velocity(
-                phone=phone,
-                vel_pred_df=vel_pred_df,
-                posi_pred_df=posi_pred_df,
-                stft_targets=conf.stft_targets,
-                is_test=is_test,
+    phone_list = conv_pred_df["phone"].unique()
+    print("interpolate")
+    posi_pred_df, _ = load_dataset(is_test=is_test)
+    new_deg_df = copy.deepcopy(posi_pred_df)
+    for phone, df_ in conv_pred_df.groupby("phone"):
+        inter_gps_epochs = new_deg_df.loc[
+            new_deg_df.phone == phone, "millisSinceGpsEpoch"
+        ].to_numpy()
+        for deg_target in deg_targets:
+            new_deg_df.loc[
+                new_deg_df.phone == phone, deg_target
+            ] = scipy.interpolate.interp1d(
+                df_.loc[:, "millisSinceGpsEpoch"].values,
+                df_[deg_target].to_numpy(),
+                bounds_error=None,
+                fill_value="extrapolate",
+                assume_sorted=True,
+                axis=0,
+            )(
+                inter_gps_epochs
             )
-        )
-    df = pd.concat(dfs, axis=0)
-    if not is_test:
-        met_df = print_metric(df=df)
-        print(met_df)
-
-    print("outlier")
-    df = filter_outlier(df=df, one_direction=True)
-    if not is_test:
-        print_metric(df=df)
-
-    print("mean pred")
-    df = mean_with_other_phones(df=df)
-    if not is_test:
-        met_df = print_metric(df=df)
-        print(met_df)
-
-    print("knn at downtown")
-    dfs = []
-    data_df, _ = load_dataset(is_test=False)
-    data_df = data_df.fillna(0.0)
-
-    data_df, global_targets_gt, local_targets_gt = calc_avg_vel(
-        df=data_df, is_database=True
-    )
-    for phone in phone_list:
-        dfs.append(
-            knn_search(
-                phone=phone,
-                vel_pred_df=vel_pred_df,
-                posi_pred_df=df,
-                data_df=data_df,
-                global_targets_gt=global_targets_gt,
-                local_targets_gt=local_targets_gt,
-                is_test=is_test,
-            )
-        )
-    df = pd.concat(dfs, axis=0)
-    if not is_test:
-        met_df = print_metric(df=df)
-        print(met_df)
-
-    print("kalmann filtering ")
-    df_down = df.loc[df.area_target == 2]
-    df_down = apply_kf_smoothing(df=df_down)
-    df = df.loc[df.area_target != 2]
-    df = pd.concat([df, df_down], axis=0)
-    df = df.sort_values(["phone", "millisSinceGpsEpoch"]).reset_index(drop=True)
-    if not is_test:
-        met_df = print_metric(df=df)
-        print(met_df)
-
-    if is_test:
-        targets = ["phone", "millisSinceGpsEpoch", "latDeg", "lngDeg"]
-        df = df.loc[:, targets]
-        sample_sub = os.path.join(
-            get_original_cwd(),
-            "../input/google-smartphone-decimeter-challenge/sample_submission.csv",
-        )
-        sample_sub = pd.read_csv(sample_sub)
-        orig_len = (len(sample_sub), len(df))
-        sample_sub = sample_sub.loc[:, targets[:2]]
-        df = pd.merge(left=sample_sub, right=df, on=targets[:2])
-        after_len = (len(sample_sub), len(df))
-        print(orig_len, after_len)
-        save_path = Path.cwd() / "./submission.csv"
-        df.loc[:, targets].to_csv(save_path, index=False)
-        print(f"Save submission file on {str(save_path)}")
+    new_deg_df = new_deg_df.loc[new_deg_df.phone.isin(phone_list)]
+    save_path = Path.cwd() / "./conv_position_pred.csv"
+    print(f"save conv position predition on {save_path}")
+    new_deg_df.to_csv(save_path, index=False)
 
 
 if __name__ == "__main__":
