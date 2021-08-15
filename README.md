@@ -17,6 +17,9 @@
     You'll have access to precise ground truth, raw GPS measurements,
     and assistance data from nearby GPS stations, in order to train and test your submissions.
 
+* Setup of the data collection, from [this paper](https://www.kaggle.com/google/android-smartphones-high-accuracy-datasets?select=ION+GNSS+2020+Android+Raw+GNSS+Measurement+Datasets+for+Precise+Positioning.pdf)
+![phone_setup](./images/phone_setup.png)
+
 * Predictions with host baseline for highway area(upper figure) are really good, but for downtown area(lower figure) are noisy due to the effect of [Multipath](https://gssc.esa.int/navipedia/index.php/Multipath).
 ![input_highway](./images/input_highway.png)
 ![input_downtown](./images/input_downtown.png)
